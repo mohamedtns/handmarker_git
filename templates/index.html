@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Gesture Recognition</title>
+    <style>
+        #video-stream {
+            width: 640px;
+            height: 480px;
+            border: 1px solid black;
+        }
+
+        #timer {
+            font-size: 24px;
+            color: red;
+        }
+
+        #capture-message {
+            font-size: 24px;
+            color: blue;
+        }
+
+        #prediction {
+            font-size: 24px;
+            color: green;
+        }
+
+        #accuracy {
+            font-size: 24px;
+            color: purple;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Hand Gesture Recognition</h1>
+    <form id="capture-form">
+        <label for="num_classes">Number of classes:</label>
+        <input type="number" id="num_classes" name="num_classes" required>
+        <label for="class_names">Class names (comma separated):</label>
+        <input type="text" id="class_names" name="class_names" required>
+        <label for="num_samples">Number of samples:</label>
+        <input type="number" id="num_samples" name="num_samples" required>
+        <button type="submit">Start Capture</button>
+    </form>
+    <button id="train-model">Train Model</button>
+    <button id="start-predict">Start Prediction</button>
+    <button id="stop-predict">Stop Prediction</button>
+    <a id="download-data" href="/download_data" download="hand_gestures.csv">
+        <button>Download Data</button>
+    </a>
+    <a id="download-model" href="/download_model" download="modele_decision_tree.h5">
+        <button>Download Model</button>
+    </a>
+    <div id="timer"></div>
+    <div id="capture-message"></div>
+    <div id="prediction"></div>
+    <div id="accuracy"></div>
+    <div>
+        <img id="video-stream" src="/video_feed" alt="Video Stream">
+    </div>
+    <script>
+        function startTimer(duration, display, callback) {
+            var timer = duration, seconds;
+            var interval = setInterval(function () {
+                seconds = parseInt(timer % 60, 10);
+                seconds = seconds < 10 ? "0" + seconds : seconds;
+
+                display.textContent = "Starting capture in " + seconds + " seconds...";
+
+                if (--timer < 0) {
+                    clearInterval(interval);
+                    display.textContent = "";
+                    if (callback) callback();
+                }
+            }, 1000);
+        }
+
+        document.getElementById('capture-form').addEventListener('submit', function (event) {
+            event.preventDefault();
+            const numClasses = document.getElementById('num_classes').value;
+            const classNames = document.getElementById('class_names').value.split(',');
+            const numSamples = document.getElementById('num_samples').value;
+            let currentClassIndex = 0;
+
+            function captureClass(className) {
+                document.getElementById('capture-message').textContent = `Capturing class: ${className}`;
+                fetch('/start_capture', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        num_samples: numSamples,
+                        class_names: [className]
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.message === "Capture completed.") {
+                        console.log(`Class ${className} captured successfully.`);
+                        currentClassIndex++;
+                        if (currentClassIndex < classNames.length) {
+                            startNextClassCapture();
+                        } else {
+                            document.getElementById('capture-message').textContent = "Capture completed!";
+                        }
+                    } else {
+                        console.error(`Error capturing class ${className}:`, data);
+                    }
+                })
+                .catch(error => alert("Error: " + error));
+            }
+
+            function startNextClassCapture() {
+                startTimer(5, document.querySelector('#timer'), function () {
+                    captureClass(classNames[currentClassIndex]);
+                });
+            }
+
+            startNextClassCapture();
+        });
+
+        document.getElementById('train-model').addEventListener('click', function () {
+            fetch('/train_model', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                document.getElementById('accuracy').textContent = `Accuracy: ${(data.accuracy * 100).toFixed(2)}%`;
+            });
+        });
+
+        document.getElementById('start-predict').addEventListener('click', function () {
+            fetch('/start_prediction', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                document.getElementById('prediction').textContent = "Prediction started...";
+            });
+        });
+
+        document.getElementById('stop-predict').addEventListener('click', function () {
+            fetch('/stop_prediction', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                document.getElementById('prediction').textContent = "Prediction stopped.";
+            });
+        });
+    </script>
+</body>
+
+</html>
