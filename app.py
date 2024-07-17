@@ -15,11 +15,11 @@ warnings.filterwarnings('ignore', category=UserWarning, module='google.protobuf'
 
 app = Flask(__name__)
 
-# Initialisation de Mediapipe Holistic et des utilitaires de dessin
+# Initializing Mediapipe Face Mesh and drawing utilities
 mp_holistic = mp.solutions.holistic
 mp_drawing = mp.solutions.drawing_utils
 
-# Variables globales
+# Global variables
 data = []
 trained_model = None
 is_predicting = False
@@ -29,7 +29,7 @@ num_samples = 0
 samples_captured = 0
 capturing_complete = False
 
-# Capture vidéo dans un thread séparé
+# Video capture in a separate thread
 class VideoCaptureThread(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
@@ -97,7 +97,7 @@ class VideoCaptureThread(threading.Thread):
 
         cap.release()
 
-# Démarrer le thread de capture vidéo
+# Start the video capture thread
 video_thread = VideoCaptureThread()
 video_thread.start()
 
@@ -131,24 +131,24 @@ def start_capture():
 def train_model():
     global trained_model
 
-    # Convertir les données en DataFrame et entraîner le modèle directement à partir de data
+    # Convert data into DataFrame and train the model directly from data
     columns = ['label'] + [f'{i}_{axis}' for i in range(21) for axis in ['x', 'y', 'z']]
     df = pd.DataFrame(data, columns=columns)
     X = df.drop('label', axis=1)
     y = df['label']
 
-    # Diviser les données en ensembles d'entraînement et de test
+    # Divide the data into training and test sets (20% test, 80% training)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
+    # Training the model
     model = DecisionTreeClassifier()
     model.fit(X_train, y_train)
 
     trained_model = model
 
-    # Enregistrer le modèle dans un fichier .h5
+    # Save the model as an .h5 file
     joblib.dump(trained_model, 'modele_decision_tree.h5')
     
-    # Calculer l'accuracy sur l'ensemble de test
+    # Predicting and calculating accuracy
     y_pred = model.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
 
