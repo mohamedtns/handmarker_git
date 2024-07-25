@@ -130,7 +130,9 @@
             .then(response => response.json())
             .then(data => {
                 alert(data.message);
-                document.getElementById('accuracy').textContent = `Accuracy: ${(data.accuracy * 100).toFixed(2)}%`;
+                if (data.success) {
+                    document.getElementById('accuracy').textContent = `Accuracy: ${(data.accuracy * 100).toFixed(2)}%`;
+                }
             });
         });
 
@@ -141,7 +143,9 @@
             .then(response => response.json())
             .then(data => {
                 alert(data.message);
-                document.getElementById('prediction').textContent = "Prediction started...";
+                if (data.success) {
+                    document.getElementById('prediction').textContent = "Prediction started...";
+                }
             });
         });
 

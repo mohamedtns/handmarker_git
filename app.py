@@ -10,6 +10,7 @@ import threading
 import time
 import warnings
 import joblib
+import os
 
 warnings.filterwarnings('ignore', category=UserWarning, module='google.protobuf')
 
@@ -131,9 +132,12 @@ def start_capture():
 def train_model():
     global trained_model
 
-    # Convert data into DataFrame and train the model directly from data
-    columns = ['label'] + [f'{i}_{axis}' for i in range(21) for axis in ['x', 'y', 'z']]
-    df = pd.DataFrame(data, columns=columns)
+    csv_file_path = 'hand_gestures.csv'
+    if not os.path.exists(csv_file_path):
+        return jsonify({'message': 'Please capture the data first.', 'success': False})
+
+    # Read the CSV file
+    df = pd.read_csv(csv_file_path)
     X = df.drop('label', axis=1)
     y = df['label']
 
@@ -156,7 +160,14 @@ def train_model():
 
 @app.route('/start_prediction', methods=['POST'])
 def start_prediction():
-    global is_predicting
+    global is_predicting, trained_model
+
+    model_file_path = 'modele_decision_tree.h5'
+    if not os.path.exists(model_file_path):
+        return jsonify({'message': 'Please train the model first.', 'success': False})
+
+    # Load the trained model
+    trained_model = joblib.load(model_file_path)
     is_predicting = True
     return jsonify({'message': 'Prediction started.', 'success': True})
 
