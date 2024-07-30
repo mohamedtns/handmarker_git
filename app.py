@@ -29,6 +29,7 @@ current_class = ""
 num_samples = 0
 samples_captured = 0
 capturing_complete = False
+columns = [f'{hand}_{i}_{axis}' for hand in ['left', 'right'] for i in range(21) for axis in ['x', 'y', 'z']]
 
 # Video capture in a separate thread
 class VideoCaptureThread(threading.Thread):
@@ -55,41 +56,58 @@ class VideoCaptureThread(threading.Thread):
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 results = holistic.process(frame_rgb)
 
-                if results.right_hand_landmarks or results.left_hand_landmarks:
-                    landmarks = []
+                # Collecting landmarks
+                landmarks = []
 
-                    if results.right_hand_landmarks:
-                        for landmark in results.right_hand_landmarks.landmark:
-                            landmarks.extend([landmark.x, landmark.y, landmark.z])
-                        mp_drawing.draw_landmarks(
-                            frame, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS,
-                            mp_drawing.DrawingSpec(color=(80, 22, 10), thickness=2, circle_radius=4),
-                            mp_drawing.DrawingSpec(color=(80, 44, 121), thickness=2, circle_radius=2)
-                        )
+                # Function to generate random values close to zero
+                def random_near_zero(size):
+                    return np.random.uniform(-0.01, 0.01, size).tolist()
 
-                    if results.left_hand_landmarks:
-                        for landmark in results.left_hand_landmarks.landmark:
-                            landmarks.extend([landmark.x, landmark.y, landmark.z])
-                        mp_drawing.draw_landmarks(
-                            frame, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS,
-                            mp_drawing.DrawingSpec(color=(121, 22, 76), thickness=2, circle_radius=4),
-                            mp_drawing.DrawingSpec(color=(121, 44, 250), thickness=2, circle_radius=2)
-                        )
+                hands_detected = False
 
-                    if is_capturing and samples_captured < num_samples:
-                        data.append([current_class] + landmarks)
-                        samples_captured += 1
-                        cv2.putText(frame, f'Capturing: {current_class} ({samples_captured}/{num_samples})', (10, 30),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
-                        if samples_captured >= num_samples:
-                            capturing_complete = True
+                if results.right_hand_landmarks:
+                    for landmark in results.right_hand_landmarks.landmark:
+                        landmarks.extend([landmark.x, landmark.y, landmark.z])
+                    mp_drawing.draw_landmarks(
+                        frame, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS,
+                        mp_drawing.DrawingSpec(color=(80, 22, 10), thickness=2, circle_radius=4),
+                        mp_drawing.DrawingSpec(color=(80, 44, 121), thickness=2, circle_radius=2)
+                    )
+                    hands_detected = True
+                else:
+                    # Append random values close to zero if no landmarks for right hand
+                    landmarks.extend(random_near_zero(63))
 
-                    if is_predicting and trained_model:
-                        columns = [f'{i}_{axis}' for i in range(21) for axis in ['x', 'y', 'z']]
+                if results.left_hand_landmarks:
+                    for landmark in results.left_hand_landmarks.landmark:
+                        landmarks.extend([landmark.x, landmark.y, landmark.z])
+                    mp_drawing.draw_landmarks(
+                        frame, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS,
+                        mp_drawing.DrawingSpec(color=(121, 22, 76), thickness=2, circle_radius=4),
+                        mp_drawing.DrawingSpec(color=(121, 44, 250), thickness=2, circle_radius=2)
+                    )
+                    hands_detected = True
+                else:
+                    # Append random values close to zero if no landmarks for left hand
+                    landmarks.extend(random_near_zero(63))
+
+                if is_capturing and samples_captured < num_samples:
+                    data.append([current_class] + landmarks)
+                    samples_captured += 1
+                    cv2.putText(frame, f'Capturing: {current_class} ({samples_captured}/{num_samples})', (10, 30),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+                    if samples_captured >= num_samples:
+                        capturing_complete = True
+
+                if is_predicting and trained_model:
+                    if hands_detected:
                         input_data = pd.DataFrame([landmarks], columns=columns)
                         prediction = trained_model.predict(input_data)[0]
                         cv2.putText(frame, f'Prediction: {prediction}', (10, 70),
                                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                    else:
+                        cv2.putText(frame, 'No hands detected', (10, 70),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
 
                 _, buffer = cv2.imencode('.jpg', frame)
                 frame = buffer.tobytes()
@@ -130,7 +148,7 @@ def start_capture():
 
 @app.route('/train_model', methods=['POST'])
 def train_model():
-    global trained_model
+    global trained_model, columns
 
     csv_file_path = 'hand_gestures.csv'
     if not os.path.exists(csv_file_path):
@@ -151,7 +169,8 @@ def train_model():
 
     # Save the model as an .h5 file
     joblib.dump(trained_model, 'modele_decision_tree.h5')
-    
+    joblib.dump(columns, 'columns.pkl')  # Save the columns
+
     # Predicting and calculating accuracy
     y_pred = model.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
@@ -160,14 +179,16 @@ def train_model():
 
 @app.route('/start_prediction', methods=['POST'])
 def start_prediction():
-    global is_predicting, trained_model
+    global is_predicting, trained_model, columns
 
     model_file_path = 'modele_decision_tree.h5'
-    if not os.path.exists(model_file_path):
+    columns_file_path = 'columns.pkl'
+    if not os.path.exists(model_file_path) or not os.path.exists(columns_file_path):
         return jsonify({'message': 'Please train the model first.', 'success': False})
 
-    # Load the trained model
+    # Load the trained model and columns
     trained_model = joblib.load(model_file_path)
+    columns = joblib.load(columns_file_path)
     is_predicting = True
     return jsonify({'message': 'Prediction started.', 'success': True})
 
@@ -179,7 +200,7 @@ def stop_prediction():
 
 @app.route('/download_data', methods=['GET'])
 def download_data():
-    columns = ['label'] + [f'{i}_{axis}' for i in range(21) for axis in ['x', 'y', 'z']]
+    columns = ['label'] + [f'{hand}_{i}_{axis}' for hand in ['left', 'right'] for i in range(21) for axis in ['x', 'y', 'z']]
     df = pd.DataFrame(data, columns=columns)
     file_path = 'hand_gestures.csv'
     df.to_csv(file_path, index=False)
